@@ -1,0 +1,296 @@
+---
+title: "DANA Project"
+author: "Team 1"
+date: "2022-10-27"
+output:
+  html_document:
+    df_print: paged
+  word_document: default
+  pdf_document: default
+---
+# DATA SET - GOOGLE PLAY STORE APPS (Source : Kaggle)
+
+
+# Data Quality
+## Load the data
+
+```{r}
+df<-read.csv('googleplaystore.csv')
+#View(df)
+```
+
+
+
+## Null values check
+
+```{r}
+colSums((is.na(df)) )
+```
+Apparently, there are only 1474 null values, but some values empty value were identified. 
+
+```{r}
+colSums((is.na(df)) | (df=='') | (df=='NaN'))
+```
+There are several null values in different format, let unify them.
+The '' and 'NaN' will be replace to null values.
+
+```{r}
+df[df=='']<-NA
+df[(df=='NaN')]<-NA
+```
+
+```{r}
+colSums((is.na(df)) )
+
+```
+
+### Fill in unll values
+
+Since the null values of the attribute rating are higher than 10% of the sample. We cannot rid of these observations. So those values will be filled in.
+
+As there are too many outliers, the mod was used for replacing the null values.
+
+```{r}
+df$Rating[is.na(df$Rating)]<-4.4 # mode is 4.4
+```
+
+```{r}
+colSums((is.na(df)) )
+
+```
+
+In total there are 12 rows with missing values which represents less than 1% of the data.
+
+```{r}
+12/length(col(df))*100
+```
+
+As the null remaining are too small compared to the dataset. The missing value will be excluded using listwise method.
+
+```{r}
+df<-na.omit(df)
+```
+
+```{r}
+colSums((is.na(df)) )
+```
+
+## price quality
+
+```{r}
+df$Price<-gsub('(\\$|,)','',df$Price)
+```
+
+## installs quality
+
+```{r}
+df$Installs<-gsub('(\\+|,)','',df$Installs)
+```
+
+```{r}
+df$Category<- as.factor(df$Category)
+df$Rating<- as.numeric(df$Rating)
+df$Reviews<- as.numeric(df$Reviews)
+df$Installs<- as.numeric(df$Installs)
+df$App<- as.character(df$App)
+df$Reviews<- as.numeric(df$Reviews)
+df$Price<- as.numeric(df$Price)
+```
+
+The reason why we replace 'Varies with device' value from the size column is because it represents more than 15% of whole dataframe and eliminating these values would represent a significant loss in data changing them on the other hand is a necessary step to convert the values for categorical to numeric.
+
+## duplicated:
+
+```{r}
+df_new<-df[!duplicated(df),]
+df_new
+```
+
+These are the new results
+
+```{r}
+summary(df_new)
+```
+
+------------------------------------------------------------------------
+
+# Question 1 : How is the distribution of Rating? Can it be considered Normal distribution?  
+
+
+```{r}
+hist(df_new$Rating, main='Histogram for Rating',xlab = 'Rating')
+```
+
+# Question 2:How is the distribution of prices? Can it be considered Normal distribution? 
+
+As the price is a numerical variable we can describe the data by its central tendency, quartiles, variation and shape. From the boxplot we can get a general view to describe the data:
+
+```{r}
+boxplot(df_new$Price,main='Boxplot for price variable')
+```
+
+This distribution its really right-skewed
+
+```{r}
+summary(df_new$Price)
+```
+
+This distribution shows various outliers.
+
+```{r}
+hist(df_new$Price,main = 'Histogram of Price',xlab = 'Price')
+```
+
+distribution is right-skewed . there are many values in zero, they come from the free apps. Price variable should be analyzed for only app that are paid considering that for free apps will be always zero. As there are app paid and not paid. This variable make sense analyze it only for apps are paid.
+
+```{r}
+pie(table(df_new$Type),main='Pie chart of Type variable')
+```
+## Splitting Free and Paid apps
+```{r}
+df_new_paid=df_new[df_new$Type!='Free',]
+df_new_free=df_new[df_new$Type=='Free',]
+boxplot(df_new_paid$Price,main='Boxplot of price')
+```
+
+Even though the distribution is better, the presence of outliers are really high.
+
+But first, lets check the threshold to consider a value outlier to analyse the outliers...
+
+```{r}
+limit<-summary(df_new_paid$Price)[5]+1.5*IQR(df_new_paid$Price)
+limit
+```
+
+```{r}
+df_new_paid_l<- df_new_paid[(df_new_paid$Price<=limit),]
+df_new_paid_g<- df_new_paid[(df_new_paid$Price>limit),]
+
+```
+
+```{r}
+df_new[df_new$Reviews==0,]
+```
+
+```{r}
+hist(df_new_paid_g$Price,main = 'Histogram of Price of app are paid',xlab = 'Price')
+```
+
+From the values considered ouliers from the distribution of paid apps, there are extreme values around 400.
+
+## fake apps
+
+```{r}
+df_new_paid_g[order(df_new_paid_g$Price,decreasing = TRUE),]
+```
+
+It looks like these apps are 'fake apps'. They do not do anything. They just cost a lot of money. between "I'm Rich - Trump Edition" to "I am rich VIP" from previous table can be considerd fake apps, how about apps high than 10 less than 200?
+
+```{r}
+df_new_paid_g_l200<- df_new_paid_g[df_new_paid_g$Price<=200,]
+df_new_paid_g_l200<-df_new_paid_g_l200[order(df_new_paid_g_l200$Price,decreasing = TRUE),]
+df_new_paid_g_l200
+```
+
+## fake and unvaluable apps
+
+Among these apps, there is still one meme app 'I am rich Person', while the others looks to be 'serious apps'. Considering some of these apps do not have any reviews or rating, the rest of them will be included.
+
+```{r}
+df_new_paid_g_okOutliers<- df_new_paid_g_l200[df_new_paid_g_l200$Reviews!=0     ,]
+df_new_paid_g_okOutliers
+```
+
+Once identified the outliers, lets merge the data to data under price of 10.
+
+```{r}
+df_new_paid_clean<- merge(df_new_paid_g_okOutliers,df_new_paid_l,all=TRUE)
+df_new_clean<- merge(df_new_paid_clean,df_new_free,all=TRUE)
+df_new_clean
+```
+
+real price distribution . right-skewed
+
+```{r}
+boxplot(df_new_paid_clean[df_new_paid_clean$Type=='Paid',]$Price, main='Boxplot for paid apps Price ',xlab = 'Price')
+```
+
+# Question 3:Which are the 5 most expensive apps in the play store dataset? 
+
+
+```{r}
+df_top<-df_new_clean[order(-df_new_clean$Price),][1:9,]
+df_top
+```
+
+
+
+# Question 4 : What is the correlation between Installs and Reviews?
+
+```{r}
+data_model<-df_new_clean[df_new_clean$Reviews>0 & df_new_clean$Installs>0,]
+
+plot(data_model$Reviews ~ data_model$Installs,main = 'Reviews and Installs relation',xlab = 'Reviews',ylab='Installs')
+
+```
+
+Once the variables are transformed into logaritmic scale, we found a linear reggresion in log log plot.
+
+```{r}
+plot(log(data_model$Reviews) ~ log(data_model$Installs),main='Log - log plot Installs and reviews')
+```
+The model of this linear regression of the transformed variables is:
+```{r}
+modelo<-lm(log(data_model$Reviews) ~ log(data_model$Installs))
+summary(modelo)
+```
+The r square is 0.92 mention a good linear 
+
+```{r}
+plot(log(data_model$Reviews) ~ log(data_model$Installs) ,main='Log - log plot Installs and reviews')
+abline(modelo)
+```
+The variables have linear correlation when both the variables are in logarithmic scale.
+
+# question 5: We are suppose to compute the chi square for category and installs.
+
+
+```{r}
+
+Typ_ContR_freq <- table(df_new$Type,df_new$Content.Rating)
+Typ_ContR_freq
+
+```
+The reason why the adults only 18+ and unrated will be removed is because there are not representative enough.
+
+
+
+```{r}
+typ_Con <- Typ_ContR_freq[,2:4]
+```
+Let find the percentages of previous two way table.
+
+
+```{r}
+cond_percent <- function(X) X/sum(X)*100
+
+apply(typ_Con,2,cond_percent)
+```
+
+After checking the conditions of the type variable based on content rating, the side by side bar plot is shown.
+```{r}
+barplot(Typ_ContR_freq[,2:4], legend.text=c("Paid", "Free"), col=c("darkblue","lightblue"),
+ylab="Count of type", xlab="Content Rating", beside=TRUE)
+```
+The chi square can be computed.
+
+```{r}
+chisq.test(Typ_ContR_freq[,2:4])
+```
+
+Hypothesis
+H0 = The content rating and type are independent
+H1 = The content rating and type are not independent (dependent)
+
+After computing the chi-square, we can reject the null hypothesis as the value of X2 is 8.1507 which is greater than the decision point 5.99 with degree of freedom 2 and level of confidence 0.05 .We can conclude the variables are not independent. Also, as the content rating changes the type variable could change.
+Also, as the content rating changes the type variable could change.
